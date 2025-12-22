@@ -1,0 +1,368 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "E-Commerce API",
+    "description": "A comprehensive e-commerce API for testing",
+    "version": "2.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.shop.example.com/v2"
+    }
+  ],
+  "paths": {
+    "/products": {
+      "get": {
+        "operationId": "listProducts",
+        "summary": "List all products",
+        "tags": ["products"],
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "minPrice",
+            "in": "query",
+            "schema": { "type": "number" }
+          },
+          {
+            "name": "maxPrice",
+            "in": "query",
+            "schema": { "type": "number" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": { "type": "integer", "default": 1 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of products",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Product" }
+                    },
+                    "total": { "type": "integer" },
+                    "page": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createProduct",
+        "summary": "Create a new product",
+        "tags": ["products"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/NewProduct" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Product created"
+          }
+        }
+      }
+    },
+    "/products/{productId}": {
+      "get": {
+        "operationId": "getProduct",
+        "summary": "Get product details",
+        "tags": ["products"],
+        "parameters": [
+          {
+            "name": "productId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product details"
+          }
+        }
+      }
+    },
+    "/cart": {
+      "get": {
+        "operationId": "getCart",
+        "summary": "Get current user's cart",
+        "tags": ["cart"],
+        "responses": {
+          "200": {
+            "description": "Cart contents"
+          }
+        }
+      },
+      "post": {
+        "operationId": "addToCart",
+        "summary": "Add item to cart",
+        "tags": ["cart"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["productId", "quantity"],
+                "properties": {
+                  "productId": { "type": "string" },
+                  "quantity": { "type": "integer", "minimum": 1 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Item added to cart"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "clearCart",
+        "summary": "Clear the cart",
+        "tags": ["cart"],
+        "responses": {
+          "204": {
+            "description": "Cart cleared"
+          }
+        }
+      }
+    },
+    "/cart/{itemId}": {
+      "patch": {
+        "operationId": "updateCartItem",
+        "summary": "Update cart item quantity",
+        "tags": ["cart"],
+        "parameters": [
+          {
+            "name": "itemId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "quantity": { "type": "integer", "minimum": 0 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cart item updated"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "removeFromCart",
+        "summary": "Remove item from cart",
+        "tags": ["cart"],
+        "parameters": [
+          {
+            "name": "itemId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Item removed"
+          }
+        }
+      }
+    },
+    "/orders": {
+      "get": {
+        "operationId": "listOrders",
+        "summary": "List user's orders",
+        "tags": ["orders"],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["pending", "processing", "shipped", "delivered", "cancelled"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of orders"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createOrder",
+        "summary": "Create order from cart",
+        "tags": ["orders"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["shippingAddress", "paymentMethod"],
+                "properties": {
+                  "shippingAddress": { "$ref": "#/components/schemas/Address" },
+                  "paymentMethod": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Order created"
+          }
+        }
+      }
+    },
+    "/orders/{orderId}": {
+      "get": {
+        "operationId": "getOrder",
+        "summary": "Get order details",
+        "tags": ["orders"],
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order details"
+          }
+        }
+      }
+    },
+    "/orders/{orderId}/cancel": {
+      "post": {
+        "operationId": "cancelOrder",
+        "summary": "Cancel an order",
+        "tags": ["orders"],
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order cancelled"
+          }
+        }
+      }
+    },
+    "/users/me": {
+      "get": {
+        "operationId": "getCurrentUser",
+        "summary": "Get current user profile",
+        "tags": ["users"],
+        "responses": {
+          "200": {
+            "description": "User profile"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateProfile",
+        "summary": "Update user profile",
+        "tags": ["users"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "email": { "type": "string", "format": "email" },
+                  "phone": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile updated"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Product": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "price": { "type": "number" },
+          "category": { "type": "string" },
+          "inStock": { "type": "boolean" }
+        }
+      },
+      "NewProduct": {
+        "type": "object",
+        "required": ["name", "price"],
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "price": { "type": "number" },
+          "category": { "type": "string" }
+        }
+      },
+      "Address": {
+        "type": "object",
+        "required": ["street", "city", "country"],
+        "properties": {
+          "street": { "type": "string" },
+          "city": { "type": "string" },
+          "state": { "type": "string" },
+          "postalCode": { "type": "string" },
+          "country": { "type": "string" }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "security": [
+    { "bearerAuth": [] }
+  ]
+}

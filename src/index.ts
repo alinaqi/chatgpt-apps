@@ -2,6 +2,13 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
+import ora from 'ora';
+import inquirer from 'inquirer';
+import { resolve } from 'path';
+import { parseOpenApiSpec, validateSpec } from './utils/index.js';
+import { Orchestrator } from './agents/orchestrator.js';
+import { TesterAgent } from './agents/tester.js';
+import { loadConfig, setConfigValue, getConfigValue } from './config.js';
 
 const program = new Command();
 
@@ -16,21 +23,136 @@ program
   .requiredOption('-s, --spec <path>', 'Path to OpenAPI spec (JSON or YAML)')
   .option('-o, --output <path>', 'Output directory', './chatgpt-app')
   .option('--skip-confirm', 'Skip confirmation prompts')
+  .option('--skip-tests', 'Skip running tests after generation')
+  .option('-v, --verbose', 'Show detailed output')
   .action(async (options) => {
-    console.log(chalk.blue('Creating ChatGPT app from OpenAPI spec...'));
-    console.log('Spec:', options.spec);
-    console.log('Output:', options.output);
-    // TODO: Implement full workflow
+    const spinner = ora('Parsing OpenAPI spec...').start();
+
+    try {
+      const specPath = resolve(options.spec);
+      const outputDir = resolve(options.output);
+
+      const spec = parseOpenApiSpec(specPath);
+      spinner.succeed('OpenAPI spec parsed successfully');
+
+      const orchestrator = new Orchestrator();
+
+      const result = await orchestrator.runFullWorkflow(
+        spec,
+        outputDir,
+        {
+          skipTests: options.skipTests,
+          verbose: options.verbose,
+        },
+        options.skipConfirm
+          ? undefined
+          : async (proposal) => {
+              console.log('\n' + chalk.cyan('Proposed App Structure:'));
+              console.log(chalk.gray('─'.repeat(50)));
+              console.log(`  ${chalk.bold('Name:')} ${proposal.name}`);
+              console.log(`  ${chalk.bold('Description:')} ${proposal.description}`);
+              console.log(`  ${chalk.bold('Auth Type:')} ${proposal.authType}`);
+              console.log(`  ${chalk.bold('Resources:')} ${proposal.resources.length}`);
+              for (const resource of proposal.resources) {
+                console.log(`    - ${resource.name}: ${resource.tools.length} tools`);
+              }
+              console.log(`  ${chalk.bold('Widgets:')} ${proposal.widgets.length}`);
+              console.log(chalk.gray('─'.repeat(50)));
+
+              const { confirm } = await inquirer.prompt([
+                {
+                  type: 'confirm',
+                  name: 'confirm',
+                  message: 'Proceed with this structure?',
+                  default: true,
+                },
+              ]);
+              return confirm;
+            }
+      );
+
+      console.log('\n' + chalk.green('✓ ChatGPT app created successfully!'));
+      console.log(`  Output: ${result.outputDir}`);
+      console.log(`  Files: ${result.generatedFiles.length}`);
+
+      if (result.testResults.length > 0) {
+        const summary = TesterAgent.summarize(result.testResults);
+        console.log(
+          `  Tests: ${summary.passed}/${summary.total} passed ` +
+            (summary.failed > 0 ? chalk.red(`(${summary.failed} failed)`) : chalk.green('✓'))
+        );
+      }
+
+      console.log('\n' + chalk.cyan('Next steps:'));
+      console.log(`  cd ${options.output}`);
+      console.log('  npm install');
+      console.log('  npm run build');
+      console.log('  npm start');
+    } catch (error) {
+      spinner.fail('Failed to create ChatGPT app');
+      console.error(chalk.red(error instanceof Error ? error.message : 'Unknown error'));
+      process.exit(1);
+    }
   });
 
 program
   .command('analyze')
   .description('Analyze an OpenAPI spec and propose app structure')
   .requiredOption('-s, --spec <path>', 'Path to OpenAPI spec')
+  .option('-o, --output <path>', 'Save proposal to directory')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
-    console.log(chalk.blue('Analyzing OpenAPI spec...'));
-    // TODO: Implement analyze command
+    const spinner = ora('Analyzing OpenAPI spec...').start();
+
+    try {
+      const specPath = resolve(options.spec);
+      const spec = parseOpenApiSpec(specPath);
+      spinner.text = 'Running analysis...';
+
+      const orchestrator = new Orchestrator();
+      const proposal = await orchestrator.analyze(spec);
+
+      spinner.succeed('Analysis complete');
+
+      if (options.json) {
+        console.log(JSON.stringify(proposal, null, 2));
+      } else {
+        console.log('\n' + chalk.cyan('Proposed App Structure:'));
+        console.log(chalk.gray('─'.repeat(50)));
+        console.log(`${chalk.bold('Name:')} ${proposal.name}`);
+        console.log(`${chalk.bold('Description:')} ${proposal.description}`);
+        console.log(`${chalk.bold('Version:')} ${proposal.version}`);
+        console.log(`${chalk.bold('Auth Type:')} ${proposal.authType}`);
+        console.log(`\n${chalk.bold('Resources:')}`);
+        for (const resource of proposal.resources) {
+          console.log(`  ${chalk.cyan(resource.name)}: ${resource.description}`);
+          for (const tool of resource.tools) {
+            console.log(`    - ${tool.name} (${tool.httpMethod} ${tool.path})`);
+          }
+        }
+        console.log(`\n${chalk.bold('Widgets:')} ${proposal.widgets.length}`);
+        for (const widget of proposal.widgets) {
+          console.log(`  - ${widget.name} (${widget.componentType}) -> ${widget.toolName}`);
+        }
+        if (proposal.excludedEndpoints.length > 0) {
+          console.log(`\n${chalk.bold('Excluded Endpoints:')}`);
+          for (const ep of proposal.excludedEndpoints) {
+            console.log(`  - ${ep.method} ${ep.path}: ${ep.reason}`);
+          }
+        }
+        console.log(chalk.gray('─'.repeat(50)));
+      }
+
+      if (options.output) {
+        const outputDir = resolve(options.output);
+        const proposalPath = await orchestrator.saveProposal(proposal, outputDir);
+        console.log(`\nProposal saved to: ${proposalPath}`);
+      }
+    } catch (error) {
+      spinner.fail('Analysis failed');
+      console.error(chalk.red(error instanceof Error ? error.message : 'Unknown error'));
+      process.exit(1);
+    }
   });
 
 program
@@ -39,18 +161,75 @@ program
   .argument('<appDir>', 'App directory containing proposal.json')
   .option('--force', 'Overwrite existing files')
   .action(async (appDir, options) => {
-    console.log(chalk.blue('Generating MCP server code...'));
-    // TODO: Implement generate command
+    const spinner = ora('Loading proposal...').start();
+
+    try {
+      const dir = resolve(appDir);
+      const orchestrator = new Orchestrator();
+
+      const proposal = await orchestrator.loadProposal(dir);
+      spinner.text = 'Generating code...';
+
+      const files = await orchestrator.generate(proposal, dir);
+      spinner.succeed('Code generated successfully');
+
+      console.log('\n' + chalk.green(`Generated ${files.length} files:`));
+      for (const file of files) {
+        console.log(`  - ${file}`);
+      }
+    } catch (error) {
+      spinner.fail('Generation failed');
+      console.error(chalk.red(error instanceof Error ? error.message : 'Unknown error'));
+      process.exit(1);
+    }
   });
 
 program
   .command('test')
   .description('Test a generated ChatGPT app')
   .argument('<appDir>', 'App directory to test')
-  .option('--verbose', 'Show detailed test output')
+  .option('-v, --verbose', 'Show detailed test output')
   .action(async (appDir, options) => {
-    console.log(chalk.blue('Testing ChatGPT app...'));
-    // TODO: Implement test command
+    const spinner = ora('Running tests...').start();
+
+    try {
+      const dir = resolve(appDir);
+      const orchestrator = new Orchestrator();
+
+      const results = await orchestrator.test(dir);
+      const summary = TesterAgent.summarize(results);
+
+      if (summary.failed === 0) {
+        spinner.succeed(`All tests passed (${summary.total}/${summary.total})`);
+      } else {
+        spinner.fail(`${summary.failed}/${summary.total} tests failed`);
+      }
+
+      if (options.verbose || summary.failed > 0) {
+        console.log('\n' + chalk.cyan('Test Results:'));
+        for (const result of results) {
+          const icon = result.passed ? chalk.green('✓') : chalk.red('✗');
+          console.log(`  ${icon} ${result.toolName} (${result.duration}ms)`);
+          if (!result.passed && result.error) {
+            console.log(chalk.red(`      ${result.error}`));
+          }
+          if (options.verbose) {
+            for (const assertion of result.assertions) {
+              const aIcon = assertion.passed ? chalk.green('✓') : chalk.red('✗');
+              console.log(`    ${aIcon} ${assertion.name}`);
+            }
+          }
+        }
+      }
+
+      if (summary.failed > 0) {
+        process.exit(1);
+      }
+    } catch (error) {
+      spinner.fail('Testing failed');
+      console.error(chalk.red(error instanceof Error ? error.message : 'Unknown error'));
+      process.exit(1);
+    }
   });
 
 program
@@ -60,8 +239,48 @@ program
   .option('-t, --tool <name>', 'Specific tool to refine')
   .option('-f, --feedback <text>', 'Natural language feedback')
   .action(async (appDir, options) => {
-    console.log(chalk.blue('Starting UX refinement...'));
-    // TODO: Implement UX command
+    try {
+      const dir = resolve(appDir);
+
+      let feedback = options.feedback;
+      if (!feedback) {
+        const answer = await inquirer.prompt([
+          {
+            type: 'input',
+            name: 'feedback',
+            message: 'Enter your UX feedback:',
+          },
+        ]);
+        feedback = answer.feedback;
+      }
+
+      const spinner = ora('Analyzing feedback...').start();
+
+      const orchestrator = new Orchestrator();
+      const result = await orchestrator.refineUX(dir, feedback, options.tool);
+
+      spinner.succeed('Analysis complete');
+
+      console.log('\n' + chalk.cyan('Suggested Changes:'));
+      console.log(chalk.gray('─'.repeat(50)));
+
+      for (const change of result.suggestedChanges) {
+        const priorityColor =
+          change.priority === 'high'
+            ? chalk.red
+            : change.priority === 'medium'
+            ? chalk.yellow
+            : chalk.gray;
+
+        console.log(`\n${chalk.bold(change.component)} [${priorityColor(change.priority)}]`);
+        console.log(`  Current: ${change.currentBehavior}`);
+        console.log(`  Suggested: ${chalk.green(change.suggestedBehavior)}`);
+      }
+      console.log(chalk.gray('─'.repeat(50)));
+    } catch (error) {
+      console.error(chalk.red(error instanceof Error ? error.message : 'Unknown error'));
+      process.exit(1);
+    }
   });
 
 program
@@ -71,8 +290,12 @@ program
   .option('-p, --port <number>', 'Port number', '3000')
   .option('--tunnel', 'Create public tunnel for testing')
   .action(async (appDir, options) => {
-    console.log(chalk.blue(`Starting dev server on port ${options.port}...`));
-    // TODO: Implement serve command
+    console.log(chalk.cyan(`Starting dev server on port ${options.port}...`));
+    console.log(chalk.yellow('Note: serve command is not yet fully implemented'));
+    console.log(`\nTo test your MCP server manually:`);
+    console.log(`  cd ${appDir}`);
+    console.log(`  npm install`);
+    console.log(`  npm run dev`);
   });
 
 program
@@ -82,15 +305,35 @@ program
   .option('--get <key>', 'Get a config value')
   .option('--list', 'List all config values')
   .action(async (options) => {
-    if (options.list) {
-      console.log(chalk.blue('Configuration:'));
-      // TODO: List config
-    } else if (options.get) {
-      // TODO: Get config value
-    } else if (options.set) {
-      // TODO: Set config value
-    } else {
-      console.log('Use --list, --get, or --set');
+    try {
+      if (options.list) {
+        const config = loadConfig();
+        console.log(chalk.cyan('Configuration:'));
+        console.log(`  anthropicApiKey: ${config.anthropicApiKey ? '***' : chalk.gray('(not set)')}`);
+        console.log(`  defaultOutputDir: ${config.defaultOutputDir}`);
+        console.log(`  modelId: ${config.modelId}`);
+      } else if (options.get) {
+        const value = getConfigValue(options.get as 'anthropicApiKey' | 'defaultOutputDir' | 'modelId');
+        if (options.get.toLowerCase().includes('key')) {
+          console.log(value ? '***' : chalk.gray('(not set)'));
+        } else {
+          console.log(value || chalk.gray('(not set)'));
+        }
+      } else if (options.set) {
+        const [key, ...valueParts] = options.set.split('=');
+        const value = valueParts.join('=');
+        if (!value) {
+          console.error(chalk.red('Usage: config --set KEY=VALUE'));
+          process.exit(1);
+        }
+        setConfigValue(key, value);
+        console.log(chalk.green(`✓ Set ${key}`));
+      } else {
+        console.log('Use --list, --get, or --set');
+      }
+    } catch (error) {
+      console.error(chalk.red(error instanceof Error ? error.message : 'Unknown error'));
+      process.exit(1);
     }
   });
 

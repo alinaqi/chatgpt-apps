@@ -1,1 +1,9 @@
-export { parseOpenApiSpec, extractEndpoints } from './openapi-parser.js';
+export {
+  parseOpenApiSpec,
+  extractEndpoints,
+  groupEndpointsByTag,
+  generateToolName,
+  extractAuthType,
+  validateSpec,
+  type EndpointInfo,
+} from './openapi-parser.js';

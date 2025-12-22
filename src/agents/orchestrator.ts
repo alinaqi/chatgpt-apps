@@ -1,8 +1,11 @@
+import type { OpenAPIV3 } from 'openapi-types';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { join, dirname } from 'path';
 import { AnalyzerAgent } from './analyzer.js';
-import { GeneratorAgent } from './generator.js';
+import { GeneratorAgent, GeneratedFile } from './generator.js';
 import { TesterAgent } from './tester.js';
 import { UXAgent } from './ux.js';
-import { AppProposal, TestResult } from '../schemas/index.js';
+import { AppProposal, TestResult, UXFeedback } from '../schemas/index.js';
 
 export interface WorkflowResult {
   proposal: AppProposal;
@@ -11,6 +14,15 @@ export interface WorkflowResult {
   outputDir: string;
 }
 
+export interface WorkflowOptions {
+  skipConfirm?: boolean;
+  skipTests?: boolean;
+  verbose?: boolean;
+}
+
+/**
+ * Orchestrates the full ChatGPT app generation workflow
+ */
 export class Orchestrator {
   private analyzer: AnalyzerAgent;
   private generator: GeneratorAgent;
@@ -24,14 +36,23 @@ export class Orchestrator {
     this.ux = new UXAgent();
   }
 
+  /**
+   * Run the full workflow: analyze -> confirm -> generate -> test
+   */
   async runFullWorkflow(
-    openApiSpec: object,
+    openApiSpec: OpenAPIV3.Document,
     outputDir: string,
+    options: WorkflowOptions = {},
     onProposal?: (proposal: AppProposal) => Promise<boolean>
   ): Promise<WorkflowResult> {
+    const { verbose = false, skipTests = false } = options;
+
     // Step 1: Analyze OpenAPI spec
-    console.log('Step 1: Analyzing OpenAPI spec...');
+    if (verbose) console.log('Step 1: Analyzing OpenAPI spec...');
     const proposal = await this.analyzer.analyze(openApiSpec);
+    if (verbose) console.log(`  Proposed app: ${proposal.name}`);
+    if (verbose) console.log(`  Resources: ${proposal.resources.length}`);
+    if (verbose) console.log(`  Widgets: ${proposal.widgets.length}`);
 
     // Step 2: Get user confirmation if callback provided
     if (onProposal) {
@@ -42,14 +63,31 @@ export class Orchestrator {
     }
 
     // Step 3: Generate code
-    console.log('Step 2: Generating MCP server code...');
+    if (verbose) console.log('\nStep 2: Generating MCP server code...');
     const files = await this.generator.generate(proposal);
+    if (verbose) console.log(`  Generated ${files.length} files`);
 
-    // TODO: Write files to outputDir
+    // Step 4: Write files to outputDir
+    if (verbose) console.log('\nStep 3: Writing files...');
+    await this.writeFiles(files, outputDir);
+    if (verbose) console.log(`  Files written to ${outputDir}`);
 
-    // Step 4: Test generated code
-    console.log('Step 3: Testing generated app...');
-    const testResults = await this.tester.test(outputDir);
+    // Step 5: Test generated code
+    let testResults: TestResult[] = [];
+    if (!skipTests) {
+      if (verbose) console.log('\nStep 4: Testing generated app...');
+      testResults = await this.tester.test(outputDir);
+      const summary = TesterAgent.summarize(testResults);
+      if (verbose) {
+        console.log(`  Tests: ${summary.passed}/${summary.total} passed`);
+        if (summary.failed > 0) {
+          console.log(`  Failed tests:`);
+          for (const result of testResults.filter((r) => !r.passed)) {
+            console.log(`    - ${result.toolName}: ${result.error}`);
+          }
+        }
+      }
+    }
 
     return {
       proposal,
@@ -57,5 +95,92 @@ export class Orchestrator {
       testResults,
       outputDir,
     };
+  }
+
+  /**
+   * Analyze-only workflow
+   */
+  async analyze(openApiSpec: OpenAPIV3.Document): Promise<AppProposal> {
+    return this.analyzer.analyze(openApiSpec);
+  }
+
+  /**
+   * Generate-only workflow (from existing proposal)
+   */
+  async generate(proposal: AppProposal, outputDir: string): Promise<string[]> {
+    const files = await this.generator.generate(proposal);
+    await this.writeFiles(files, outputDir);
+    return files.map((f) => f.path);
+  }
+
+  /**
+   * Test-only workflow
+   */
+  async test(appDir: string): Promise<TestResult[]> {
+    return this.tester.test(appDir);
+  }
+
+  /**
+   * UX refinement workflow
+   */
+  async refineUX(
+    appDir: string,
+    feedback: string,
+    toolName?: string
+  ): Promise<UXFeedback> {
+    return this.ux.refine(appDir, feedback, toolName);
+  }
+
+  /**
+   * Write generated files to disk
+   */
+  private async writeFiles(files: GeneratedFile[], outputDir: string): Promise<void> {
+    // Ensure output directory exists
+    if (!existsSync(outputDir)) {
+      mkdirSync(outputDir, { recursive: true });
+    }
+
+    for (const file of files) {
+      const filePath = join(outputDir, file.path);
+      const fileDir = dirname(filePath);
+
+      // Ensure parent directory exists
+      if (!existsSync(fileDir)) {
+        mkdirSync(fileDir, { recursive: true });
+      }
+
+      writeFileSync(filePath, file.content);
+    }
+  }
+
+  /**
+   * Save proposal to file
+   */
+  async saveProposal(proposal: AppProposal, outputDir: string): Promise<string> {
+    const proposalPath = join(outputDir, 'proposal.json');
+
+    if (!existsSync(outputDir)) {
+      mkdirSync(outputDir, { recursive: true });
+    }
+
+    writeFileSync(proposalPath, JSON.stringify(proposal, null, 2));
+    return proposalPath;
+  }
+
+  /**
+   * Load proposal from file
+   */
+  async loadProposal(appDir: string): Promise<AppProposal> {
+    const proposalPath = join(appDir, 'proposal.json');
+
+    if (!existsSync(proposalPath)) {
+      throw new Error(`Proposal not found at ${proposalPath}`);
+    }
+
+    const content = await import('fs').then((fs) =>
+      fs.readFileSync(proposalPath, 'utf-8')
+    );
+
+    return JSON.parse(content) as AppProposal;
   }
 }
