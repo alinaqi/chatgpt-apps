@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# API Keys and credentials
+config.json
+~/.chatgpt-apps/
+
+# Working docs (internal only)
+docs/research.md
+docs/notes/
+docs/scratch/
+*.draft.md
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Test output
+coverage/
+.nyc_output/
+test-results/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Generated apps (for testing)
+test-output/
+.chatgpt-apps/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
