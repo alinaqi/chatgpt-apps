@@ -25,6 +25,7 @@ program
   .option('--skip-confirm', 'Skip confirmation prompts')
   .option('--skip-tests', 'Skip running tests after generation')
   .option('-v, --verbose', 'Show detailed output')
+  .option('--chatgpt-app', 'Generate ChatGPT Apps SDK compatible output (HTTP server + widgets)')
   .action(async (options) => {
     const spinner = ora('Parsing OpenAPI spec...').start();
 
@@ -43,6 +44,7 @@ program
         {
           skipTests: options.skipTests,
           verbose: options.verbose,
+          chatgptApp: options.chatgptApp,
         },
         options.skipConfirm
           ? undefined
@@ -98,44 +100,81 @@ program
       console.log(chalk.gray('   │') + ` API_KEY=${chalk.cyan('your-api-key-or-bearer-token')}`);
       console.log(chalk.gray('   └─────────────────────────────────────────'));
 
-      console.log('\n' + chalk.yellow('3. Test Locally with Claude Desktop:'));
-      console.log('   Add to your Claude Desktop config (~/.claude/claude_desktop_config.json):');
-      console.log(chalk.gray('   ┌─────────────────────────────────────────'));
-      console.log(chalk.gray('   │') + ' {');
-      console.log(chalk.gray('   │') + '   "mcpServers": {');
-      console.log(chalk.gray('   │') + `     "${result.proposal.name}": {`);
-      console.log(chalk.gray('   │') + `       "command": "node",`);
-      console.log(chalk.gray('   │') + `       "args": ["${resolve(outputDir, 'dist', 'index.js')}"],`);
-      console.log(chalk.gray('   │') + '       "env": {');
-      console.log(chalk.gray('   │') + '         "API_BASE_URL": "https://your-api-url.com",');
-      console.log(chalk.gray('   │') + '         "API_KEY": "your-api-key"');
-      console.log(chalk.gray('   │') + '       }');
-      console.log(chalk.gray('   │') + '     }');
-      console.log(chalk.gray('   │') + '   }');
-      console.log(chalk.gray('   │') + ' }');
-      console.log(chalk.gray('   └─────────────────────────────────────────'));
+      if (options.chatgptApp) {
+        // ChatGPT Apps SDK specific instructions
+        console.log('\n' + chalk.yellow('3. Run the HTTP Server:'));
+        console.log('   npm start');
+        console.log(`   Server will run at: ${chalk.cyan('http://localhost:3000/mcp')}`);
 
-      console.log('\n' + chalk.yellow('4. Deploy for Public Access:'));
-      console.log('   Option A: ' + chalk.bold('Serverless (Recommended)'));
-      console.log('     - Deploy to Cloudflare Workers, Vercel, or AWS Lambda');
-      console.log('     - Use MCP-over-HTTP transport for remote access');
-      console.log('');
-      console.log('   Option B: ' + chalk.bold('Self-hosted'));
-      console.log('     - Run on your server with: npm start');
-      console.log('     - Use a reverse proxy (nginx) with HTTPS');
-      console.log('     - Expose via public URL or tunnel (ngrok, cloudflared)');
-      console.log('');
-      console.log('   Option C: ' + chalk.bold('Publish to npm'));
-      console.log('     - Update package.json with your details');
-      console.log('     - Run: npm publish');
-      console.log('     - Users can install with: npx ' + result.proposal.name);
+        console.log('\n' + chalk.yellow('4. Expose to Internet (for testing):'));
+        console.log('   Use ngrok or similar to create a public URL:');
+        console.log(chalk.gray('   ┌─────────────────────────────────────────'));
+        console.log(chalk.gray('   │') + ' ngrok http 3000');
+        console.log(chalk.gray('   │') + ' # This gives you: https://<id>.ngrok.app/mcp');
+        console.log(chalk.gray('   └─────────────────────────────────────────'));
 
-      console.log('\n' + chalk.yellow('5. Use with ChatGPT:'));
-      console.log('   ChatGPT uses Actions (not MCP directly). To convert:');
-      console.log('   - Host your API endpoints publicly');
-      console.log('   - Create a GPT at https://chat.openai.com/gpts/editor');
-      console.log('   - Import your OpenAPI spec in the Actions section');
-      console.log('   - Configure authentication (API key or OAuth)');
+        console.log('\n' + chalk.yellow('5. Connect to ChatGPT:'));
+        console.log('   a. Enable Developer Mode:');
+        console.log('      Settings → Apps & Connectors → Advanced settings');
+        console.log('');
+        console.log('   b. Create a Connector:');
+        console.log('      Settings → Connectors → Create');
+        console.log(`      - Name: ${chalk.cyan(result.proposal.name)}`);
+        console.log(`      - URL: ${chalk.cyan('https://<your-ngrok-url>/mcp')}`);
+        console.log('');
+        console.log('   c. Use in Chat:');
+        console.log('      Click + → More → Select your connector');
+        console.log('      Ask ChatGPT to use your tools!');
+
+        console.log('\n' + chalk.yellow('6. Deploy for Production:'));
+        console.log('   - Deploy to: Fly.io, Render, Railway, or Cloud Run');
+        console.log('   - Ensure HTTPS is enabled');
+        console.log('   - Set environment variables on your platform');
+        console.log('   - Update connector URL in ChatGPT settings');
+
+        console.log('\n' + chalk.yellow('7. Submit to ChatGPT Apps Directory:'));
+        console.log('   - Verify your organization at platform.openai.com');
+        console.log('   - Go to: platform.openai.com/apps-manage');
+        console.log('   - Submit your app for review');
+        console.log('   - See: https://developers.openai.com/apps-sdk/');
+      } else {
+        // Claude Desktop (stdio MCP) instructions
+        console.log('\n' + chalk.yellow('3. Test Locally with Claude Desktop:'));
+        console.log('   Add to your Claude Desktop config (~/.claude/claude_desktop_config.json):');
+        console.log(chalk.gray('   ┌─────────────────────────────────────────'));
+        console.log(chalk.gray('   │') + ' {');
+        console.log(chalk.gray('   │') + '   "mcpServers": {');
+        console.log(chalk.gray('   │') + `     "${result.proposal.name}": {`);
+        console.log(chalk.gray('   │') + `       "command": "node",`);
+        console.log(chalk.gray('   │') + `       "args": ["${resolve(outputDir, 'dist', 'index.js')}"],`);
+        console.log(chalk.gray('   │') + '       "env": {');
+        console.log(chalk.gray('   │') + '         "API_BASE_URL": "https://your-api-url.com",');
+        console.log(chalk.gray('   │') + '         "API_KEY": "your-api-key"');
+        console.log(chalk.gray('   │') + '       }');
+        console.log(chalk.gray('   │') + '     }');
+        console.log(chalk.gray('   │') + '   }');
+        console.log(chalk.gray('   │') + ' }');
+        console.log(chalk.gray('   └─────────────────────────────────────────'));
+
+        console.log('\n' + chalk.yellow('4. Deploy for Public Access:'));
+        console.log('   Option A: ' + chalk.bold('Serverless (Recommended)'));
+        console.log('     - Deploy to Cloudflare Workers, Vercel, or AWS Lambda');
+        console.log('     - Use MCP-over-HTTP transport for remote access');
+        console.log('');
+        console.log('   Option B: ' + chalk.bold('Self-hosted'));
+        console.log('     - Run on your server with: npm start');
+        console.log('     - Use a reverse proxy (nginx) with HTTPS');
+        console.log('     - Expose via public URL or tunnel (ngrok, cloudflared)');
+        console.log('');
+        console.log('   Option C: ' + chalk.bold('Publish to npm'));
+        console.log('     - Update package.json with your details');
+        console.log('     - Run: npm publish');
+        console.log('     - Users can install with: npx ' + result.proposal.name);
+
+        console.log('\n' + chalk.yellow('5. Use with ChatGPT (Apps SDK):'));
+        console.log('   Run with --chatgpt-app flag to generate ChatGPT-compatible output:');
+        console.log(`   chatgpt-apps create -s ${options.spec} -o ${options.output} --chatgpt-app`);
+      }
 
       console.log('\n' + chalk.gray('─'.repeat(50)));
       console.log(chalk.cyan('Documentation: ') + 'https://github.com/alinaqi/chatgpt-apps#readme');
