@@ -83,11 +83,63 @@ program
         );
       }
 
-      console.log('\n' + chalk.cyan('Next steps:'));
-      console.log(`  cd ${options.output}`);
-      console.log('  npm install');
-      console.log('  npm run build');
-      console.log('  npm start');
+      // Display comprehensive next steps
+      console.log('\n' + chalk.cyan.bold('━━━ Next Steps ━━━'));
+
+      console.log('\n' + chalk.yellow('1. Setup & Build:'));
+      console.log(`   cd ${options.output}`);
+      console.log('   npm install');
+      console.log('   npm run build');
+
+      console.log('\n' + chalk.yellow('2. Configure Environment:'));
+      console.log('   Create a .env file with your API credentials:');
+      console.log(chalk.gray('   ┌─────────────────────────────────────────'));
+      console.log(chalk.gray('   │') + ` API_BASE_URL=${chalk.cyan('https://your-api-base-url.com')}`);
+      console.log(chalk.gray('   │') + ` API_KEY=${chalk.cyan('your-api-key-or-bearer-token')}`);
+      console.log(chalk.gray('   └─────────────────────────────────────────'));
+
+      console.log('\n' + chalk.yellow('3. Test Locally with Claude Desktop:'));
+      console.log('   Add to your Claude Desktop config (~/.claude/claude_desktop_config.json):');
+      console.log(chalk.gray('   ┌─────────────────────────────────────────'));
+      console.log(chalk.gray('   │') + ' {');
+      console.log(chalk.gray('   │') + '   "mcpServers": {');
+      console.log(chalk.gray('   │') + `     "${result.proposal.name}": {`);
+      console.log(chalk.gray('   │') + `       "command": "node",`);
+      console.log(chalk.gray('   │') + `       "args": ["${resolve(outputDir, 'dist', 'index.js')}"],`);
+      console.log(chalk.gray('   │') + '       "env": {');
+      console.log(chalk.gray('   │') + '         "API_BASE_URL": "https://your-api-url.com",');
+      console.log(chalk.gray('   │') + '         "API_KEY": "your-api-key"');
+      console.log(chalk.gray('   │') + '       }');
+      console.log(chalk.gray('   │') + '     }');
+      console.log(chalk.gray('   │') + '   }');
+      console.log(chalk.gray('   │') + ' }');
+      console.log(chalk.gray('   └─────────────────────────────────────────'));
+
+      console.log('\n' + chalk.yellow('4. Deploy for Public Access:'));
+      console.log('   Option A: ' + chalk.bold('Serverless (Recommended)'));
+      console.log('     - Deploy to Cloudflare Workers, Vercel, or AWS Lambda');
+      console.log('     - Use MCP-over-HTTP transport for remote access');
+      console.log('');
+      console.log('   Option B: ' + chalk.bold('Self-hosted'));
+      console.log('     - Run on your server with: npm start');
+      console.log('     - Use a reverse proxy (nginx) with HTTPS');
+      console.log('     - Expose via public URL or tunnel (ngrok, cloudflared)');
+      console.log('');
+      console.log('   Option C: ' + chalk.bold('Publish to npm'));
+      console.log('     - Update package.json with your details');
+      console.log('     - Run: npm publish');
+      console.log('     - Users can install with: npx ' + result.proposal.name);
+
+      console.log('\n' + chalk.yellow('5. Use with ChatGPT:'));
+      console.log('   ChatGPT uses Actions (not MCP directly). To convert:');
+      console.log('   - Host your API endpoints publicly');
+      console.log('   - Create a GPT at https://chat.openai.com/gpts/editor');
+      console.log('   - Import your OpenAPI spec in the Actions section');
+      console.log('   - Configure authentication (API key or OAuth)');
+
+      console.log('\n' + chalk.gray('─'.repeat(50)));
+      console.log(chalk.cyan('Documentation: ') + 'https://github.com/alinaqi/chatgpt-apps#readme');
+      console.log(chalk.gray('─'.repeat(50)));
     } catch (error) {
       spinner.fail('Failed to create ChatGPT app');
       console.error(chalk.red(error instanceof Error ? error.message : 'Unknown error'));
