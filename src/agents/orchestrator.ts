@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { AnalyzerAgent } from './analyzer.js';
 import { GeneratorAgent, GeneratedFile } from './generator.js';
+import { ChatGPTAppGenerator } from './chatgpt-app-generator.js';
 import { TesterAgent } from './tester.js';
 import { UXAgent } from './ux.js';
 import { AppProposal, TestResult, UXFeedback } from '../schemas/index.js';
@@ -18,6 +19,8 @@ export interface WorkflowOptions {
   skipConfirm?: boolean;
   skipTests?: boolean;
   verbose?: boolean;
+  /** Generate ChatGPT App SDK compatible output with HTTP server and widgets */
+  chatgptApp?: boolean;
 }
 
 /**
@@ -26,12 +29,14 @@ export interface WorkflowOptions {
 export class Orchestrator {
   private analyzer: AnalyzerAgent;
   private generator: GeneratorAgent;
+  private chatgptGenerator: ChatGPTAppGenerator;
   private tester: TesterAgent;
   private ux: UXAgent;
 
   constructor() {
     this.analyzer = new AnalyzerAgent();
     this.generator = new GeneratorAgent();
+    this.chatgptGenerator = new ChatGPTAppGenerator();
     this.tester = new TesterAgent();
     this.ux = new UXAgent();
   }
@@ -45,7 +50,7 @@ export class Orchestrator {
     options: WorkflowOptions = {},
     onProposal?: (proposal: AppProposal) => Promise<boolean>
   ): Promise<WorkflowResult> {
-    const { verbose = false, skipTests = false } = options;
+    const { verbose = false, skipTests = false, chatgptApp = false } = options;
 
     // Step 1: Analyze OpenAPI spec
     if (verbose) console.log('Step 1: Analyzing OpenAPI spec...');
@@ -62,9 +67,14 @@ export class Orchestrator {
       }
     }
 
-    // Step 3: Generate code
-    if (verbose) console.log('\nStep 2: Generating MCP server code...');
-    const files = await this.generator.generate(proposal);
+    // Step 3: Generate code (use ChatGPT App generator if flag is set)
+    if (verbose) {
+      const generatorType = chatgptApp ? 'ChatGPT Apps SDK' : 'MCP stdio';
+      console.log(`\nStep 2: Generating ${generatorType} server code...`);
+    }
+    const files = chatgptApp
+      ? await this.chatgptGenerator.generate(proposal)
+      : await this.generator.generate(proposal);
     if (verbose) console.log(`  Generated ${files.length} files`);
 
     // Step 4: Write files to outputDir
