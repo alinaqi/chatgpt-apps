@@ -1,6 +1,6 @@
 {
   "name": "openapi-chatgpt-apps",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "CLI tool to generate ChatGPT Apps from OpenAPI specs using agentic AI workflows",
   "main": "dist/index.js",
   "bin": {
@@ -21,7 +21,7 @@
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build"
   },
@@ -69,9 +69,9 @@
     "tsx": "^4.7.0",
     "vitest": "^1.4.0",
     "@vitest/coverage-v8": "^1.4.0",
-    "eslint": "^8.57.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0"
+    "eslint": "^9.0.0",
+    "@eslint/js": "^9.0.0",
+    "typescript-eslint": "^8.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
