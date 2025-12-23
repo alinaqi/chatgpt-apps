@@ -161,7 +161,16 @@ main().catch(console.error);
    * Generate tools definitions and handlers
    */
   private generateTools(proposal: AppProposal): GeneratedFile {
-    const allTools = proposal.resources.flatMap((r) => r.tools);
+    // Deduplicate tools by name
+    const allToolsRaw = proposal.resources.flatMap((r) => r.tools);
+    const seenNames = new Set<string>();
+    const allTools = allToolsRaw.filter((tool) => {
+      if (seenNames.has(tool.name)) {
+        return false;
+      }
+      seenNames.add(tool.name);
+      return true;
+    });
 
     const toolDefinitions = allTools.map((tool) => this.generateToolDefinition(tool));
     const toolHandlers = allTools.map((tool) => this.generateToolHandler(tool));
@@ -169,8 +178,19 @@ main().catch(console.error);
     const content = `import { z } from 'zod';
 import { apiClient } from './api-client.js';
 
+// Tool type definition
+interface ToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: string;
+    properties: Record<string, unknown>;
+    required: string[];
+  };
+}
+
 // Tool definitions for MCP
-export const tools = [
+export const tools: ToolDefinition[] = [
 ${toolDefinitions.join(',\n')}
 ];
 
@@ -239,12 +259,44 @@ ${allTools.map((t) => `      case '${t.name}':
   }
 
   /**
+   * Reserved words that cannot be used as variable names
+   */
+  private static readonly RESERVED_WORDS = new Set([
+    'arguments', 'break', 'case', 'catch', 'class', 'const', 'continue',
+    'debugger', 'default', 'delete', 'do', 'else', 'enum', 'export',
+    'extends', 'false', 'finally', 'for', 'function', 'if', 'import',
+    'in', 'instanceof', 'new', 'null', 'return', 'super', 'switch',
+    'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield',
+  ]);
+
+  /**
+   * Sanitize parameter name to avoid reserved words
+   */
+  private sanitizeParamName(name: string): string {
+    if (GeneratorAgent.RESERVED_WORDS.has(name)) {
+      return `_${name}`;
+    }
+    return name;
+  }
+
+  /**
    * Generate a tool handler function
    */
   private generateToolHandler(tool: ToolProposal): string {
-    const paramDestructure = tool.parameters.length > 0
-      ? `const { ${tool.parameters.map((p) => p.name).join(', ')} } = args as {
-    ${tool.parameters.map((p) => `${p.name}${p.required ? '' : '?'}: ${this.mapToTsType(p.type)};`).join('\n    ')}
+    // Deduplicate params and sanitize names
+    const seenParams = new Set<string>();
+    const uniqueParams = tool.parameters.filter((p) => {
+      if (seenParams.has(p.name)) return false;
+      seenParams.add(p.name);
+      return true;
+    });
+
+    const paramDestructure = uniqueParams.length > 0
+      ? `const { ${uniqueParams.map((p) => {
+          const safeName = this.sanitizeParamName(p.name);
+          return safeName !== p.name ? `${p.name}: ${safeName}` : p.name;
+        }).join(', ')} } = args as {
+    ${uniqueParams.map((p) => `${p.name}${p.required ? '' : '?'}: ${this.mapToTsType(p.type)};`).join('\n    ')}
   };`
       : '';
 
@@ -252,16 +304,17 @@ ${allTools.map((t) => `      case '${t.name}':
     let path = tool.path;
     for (const param of pathParams) {
       const paramName = param.slice(1, -1);
-      path = path.replace(param, `\${${paramName}}`);
+      const safeName = this.sanitizeParamName(paramName);
+      path = path.replace(param, `\${${safeName}}`);
     }
 
-    const bodyParams = tool.parameters.filter(
+    const bodyParams = uniqueParams.filter(
       (p) => !tool.path.includes(`{${p.name}}`) && p.name !== 'limit' && p.name !== 'page'
     );
 
     const hasBody = ['POST', 'PUT', 'PATCH'].includes(tool.httpMethod) && bodyParams.length > 0;
     const bodyArg = hasBody
-      ? `, { ${bodyParams.map((p) => p.name).join(', ')} }`
+      ? `, { ${bodyParams.map((p) => this.sanitizeParamName(p.name)).join(', ')} }`
       : '';
 
     return `async function handle_${tool.name}(args: Record<string, unknown>) {
@@ -275,6 +328,17 @@ ${allTools.map((t) => `      case '${t.name}':
    * Generate types file
    */
   private generateTypes(proposal: AppProposal): GeneratedFile {
+    // Deduplicate tools by name
+    const allToolsRaw = proposal.resources.flatMap((r) => r.tools);
+    const seenNames = new Set<string>();
+    const allTools = allToolsRaw.filter((tool) => {
+      if (seenNames.has(tool.name)) {
+        return false;
+      }
+      seenNames.add(tool.name);
+      return true;
+    });
+
     const content = `// Generated types for ${proposal.name}
 
 export interface ApiResponse<T> {
@@ -291,10 +355,17 @@ export interface PaginatedResponse<T> {
 }
 
 // Tool parameter types
-${proposal.resources.flatMap((r) => r.tools).map((tool) => {
+${allTools.map((tool) => {
   if (tool.parameters.length === 0) return '';
+  // Deduplicate params by name within each tool
+  const seenParams = new Set<string>();
+  const uniqueParams = tool.parameters.filter((p) => {
+    if (seenParams.has(p.name)) return false;
+    seenParams.add(p.name);
+    return true;
+  });
   return `export interface ${this.pascalCase(tool.name)}Params {
-  ${tool.parameters.map((p) => `${p.name}${p.required ? '' : '?'}: ${this.mapToTsType(p.type)};`).join('\n  ')}
+  ${uniqueParams.map((p) => `${p.name}${p.required ? '' : '?'}: ${this.mapToTsType(p.type)};`).join('\n  ')}
 }`;
 }).filter(Boolean).join('\n\n')}
 `;
@@ -338,7 +409,7 @@ async function request<T>(path: string, options: RequestOptions): Promise<T> {
     throw new Error(\`API error: \${response.status} \${response.statusText}\`);
   }
 
-  return response.json();
+  return response.json() as Promise<T>;
 }
 
 export const apiClient = {
