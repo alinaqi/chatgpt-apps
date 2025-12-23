@@ -1,5 +1,5 @@
 {
-  "name": "chatgpt-apps",
+  "name": "openapi-chatgpt-apps",
   "version": "0.1.0",
   "description": "CLI tool to generate ChatGPT Apps from OpenAPI specs using agentic AI workflows",
   "main": "dist/index.js",
@@ -7,6 +7,12 @@
     "chatgpt-apps": "./bin/chatgpt-apps.js"
   },
   "type": "module",
+  "files": [
+    "dist",
+    "bin",
+    "templates",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
@@ -14,22 +20,33 @@
     "test": "vitest",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
-    "test:e2e": "vitest run tests/e2e",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src --ext .ts",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "chatgpt",
     "openai",
     "mcp",
+    "model-context-protocol",
     "cli",
     "openapi",
     "ai",
-    "code-generation"
+    "code-generation",
+    "anthropic",
+    "claude"
   ],
-  "author": "",
+  "author": "alinaqi",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alinaqi/chatgpt-apps.git"
+  },
+  "homepage": "https://github.com/alinaqi/chatgpt-apps#readme",
+  "bugs": {
+    "url": "https://github.com/alinaqi/chatgpt-apps/issues"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
