@@ -5,10 +5,74 @@ import chalk from 'chalk';
 import ora from 'ora';
 import inquirer from 'inquirer';
 import { resolve } from 'path';
+import type { OpenAPIV3 } from 'openapi-types';
 import { parseOpenApiSpec, validateSpec } from './utils/index.js';
 import { Orchestrator } from './agents/orchestrator.js';
 import { TesterAgent } from './agents/tester.js';
 import { loadConfig, setConfigValue, getConfigValue } from './config.js';
+
+/**
+ * Filter OpenAPI spec to include only specified paths
+ */
+function filterOpenApiSpec(
+  spec: OpenAPIV3.Document,
+  options: { includePaths?: string; maxTools?: number }
+): OpenAPIV3.Document {
+  let filteredPaths = { ...spec.paths };
+
+  // Filter by path patterns
+  if (options.includePaths) {
+    const patterns = options.includePaths.split(',').map((p) => p.trim());
+    filteredPaths = {};
+
+    for (const [path, pathItem] of Object.entries(spec.paths || {})) {
+      const matches = patterns.some((pattern) => {
+        // Support simple wildcard matching
+        if (pattern.endsWith('*')) {
+          return path.startsWith(pattern.slice(0, -1));
+        }
+        return path === pattern || path.startsWith(pattern + '/') || path.startsWith(pattern + '{');
+      });
+
+      if (matches && pathItem) {
+        filteredPaths[path] = pathItem;
+      }
+    }
+  }
+
+  // Limit number of tools (count methods across all paths)
+  if (options.maxTools && options.maxTools > 0) {
+    let toolCount = 0;
+    const limitedPaths: OpenAPIV3.PathsObject = {};
+
+    for (const [path, pathItem] of Object.entries(filteredPaths)) {
+      if (!pathItem) continue;
+
+      const methods = ['get', 'post', 'put', 'patch', 'delete'] as const;
+      const limitedPathItem: OpenAPIV3.PathItemObject = {};
+
+      for (const method of methods) {
+        if (pathItem[method] && toolCount < options.maxTools) {
+          limitedPathItem[method] = pathItem[method];
+          toolCount++;
+        }
+      }
+
+      if (Object.keys(limitedPathItem).length > 0) {
+        limitedPaths[path] = limitedPathItem;
+      }
+
+      if (toolCount >= options.maxTools) break;
+    }
+
+    filteredPaths = limitedPaths;
+  }
+
+  return {
+    ...spec,
+    paths: filteredPaths,
+  };
+}
 
 const program = new Command();
 
@@ -26,6 +90,8 @@ program
   .option('--skip-tests', 'Skip running tests after generation')
   .option('-v, --verbose', 'Show detailed output')
   .option('--chatgpt-app', 'Generate ChatGPT Apps SDK compatible output (HTTP server + widgets)')
+  .option('--include-paths <patterns>', 'Comma-separated path patterns to include (e.g., "/users,/surveys")')
+  .option('--max-tools <number>', 'Maximum number of tools to generate', parseInt)
   .action(async (options) => {
     const spinner = ora('Parsing OpenAPI spec...').start();
 
@@ -33,8 +99,21 @@ program
       const specPath = resolve(options.spec);
       const outputDir = resolve(options.output);
 
-      const spec = parseOpenApiSpec(specPath);
+      let spec = parseOpenApiSpec(specPath);
       spinner.succeed('OpenAPI spec parsed successfully');
+
+      // Apply path filtering if specified
+      if (options.includePaths || options.maxTools) {
+        const originalPathCount = Object.keys(spec.paths || {}).length;
+        spec = filterOpenApiSpec(spec, {
+          includePaths: options.includePaths,
+          maxTools: options.maxTools,
+        });
+        const filteredPathCount = Object.keys(spec.paths || {}).length;
+        console.log(
+          chalk.gray(`  Filtered: ${filteredPathCount} paths (from ${originalPathCount})`)
+        );
+      }
 
       const orchestrator = new Orchestrator();
 
