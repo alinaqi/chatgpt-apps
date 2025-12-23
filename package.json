@@ -1,6 +1,6 @@
 {
   "name": "openapi-chatgpt-apps",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CLI tool to generate ChatGPT Apps from OpenAPI specs using agentic AI workflows",
   "main": "dist/index.js",
   "bin": {

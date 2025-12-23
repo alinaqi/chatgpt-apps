@@ -15,7 +15,7 @@ const program = new Command();
 program
   .name('chatgpt-apps')
   .description('Generate ChatGPT Apps from OpenAPI specs using agentic AI workflows')
-  .version('0.1.0');
+  .version('0.2.0');
 
 program
   .command('create')
