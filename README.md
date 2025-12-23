@@ -50,6 +50,24 @@ npm start  # Server runs at http://localhost:3000/mcp
 ngrok http 3000
 ```
 
+### Filtering Large APIs
+
+For APIs with many endpoints, you can filter to include only specific paths or limit the number of tools. This helps avoid ChatGPT's 2MB connector size limit.
+
+```bash
+# Include only specific paths (supports wildcards)
+chatgpt-apps create -s ./api-spec.yaml -o ./my-app --chatgpt-app \
+  --include-paths "/api/v2/auth/*,/api/v2/surveys/"
+
+# Limit to 10 tools maximum
+chatgpt-apps create -s ./api-spec.yaml -o ./my-app --chatgpt-app \
+  --max-tools 10
+
+# Combine both options
+chatgpt-apps create -s ./api-spec.yaml -o ./my-app --chatgpt-app \
+  --include-paths "/users,/surveys/*" --max-tools 15
+```
+
 ### Individual Commands
 
 ```bash
