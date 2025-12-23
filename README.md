@@ -14,7 +14,7 @@ CLI tool to generate ChatGPT Apps from OpenAPI specs using agentic AI workflows.
 ## Installation
 
 ```bash
-npm install -g chatgpt-apps
+npm install -g openapi-chatgpt-apps
 ```
 
 ## Quick Start
