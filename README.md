@@ -11,6 +11,15 @@ CLI tool to generate ChatGPT Apps from OpenAPI specs using agentic AI workflows.
 3. **Test** the generated app for correctness
 4. **Refine** the UX through natural language feedback
 
+### Output Modes
+
+The CLI supports two output modes:
+
+| Mode | Transport | Use Case |
+|------|-----------|----------|
+| **Claude Desktop** (default) | stdio | Local MCP server for Claude Desktop |
+| **ChatGPT Apps SDK** | HTTP | Web-based MCP server with widgets for ChatGPT |
+
 ## Installation
 
 ```bash
@@ -19,11 +28,31 @@ npm install -g openapi-chatgpt-apps
 
 ## Quick Start
 
-```bash
-# Create a ChatGPT app from your OpenAPI spec
-chatgpt-apps create -s ./api-spec.yaml -o ./my-chatgpt-app
+### For Claude Desktop (stdio MCP)
 
-# Or run steps individually:
+```bash
+# Create an MCP server for Claude Desktop
+chatgpt-apps create -s ./api-spec.yaml -o ./my-app
+```
+
+### For ChatGPT Apps SDK (HTTP MCP + Widgets)
+
+```bash
+# Create a ChatGPT App with HTTP server and web widgets
+chatgpt-apps create -s ./api-spec.yaml -o ./my-chatgpt-app --chatgpt-app
+
+# Build and run the server
+cd my-chatgpt-app
+npm install && npm run build
+npm start  # Server runs at http://localhost:3000/mcp
+
+# Expose via ngrok for ChatGPT
+ngrok http 3000
+```
+
+### Individual Commands
+
+```bash
 chatgpt-apps analyze -s ./api-spec.yaml
 chatgpt-apps generate ./my-chatgpt-app
 chatgpt-apps test ./my-chatgpt-app
@@ -59,12 +88,30 @@ export ANTHROPIC_API_KEY=your-key-here
 
 ### Architecture
 
-The CLI uses an agentic architecture with four specialized AI agents:
+The CLI uses an agentic architecture with specialized AI agents:
 
 1. **Analyzer Agent** - Parses OpenAPI specs and proposes optimal ChatGPT app structure
-2. **Generator Agent** - Produces TypeScript MCP server code
-3. **Tester Agent** - Validates generated code and tests tool functionality
-4. **UX Agent** - Iteratively improves widgets and user experience
+2. **Generator Agent** - Produces TypeScript MCP server code (stdio transport)
+3. **ChatGPT App Generator** - Produces HTTP MCP server with web widgets
+4. **Tester Agent** - Validates generated code and tests tool functionality
+5. **UX Agent** - Iteratively improves widgets and user experience
+
+### ChatGPT Apps SDK Integration
+
+When using `--chatgpt-app`, the generator creates:
+
+- **HTTP Server** with `/mcp` endpoint using `StreamableHTTPServerTransport`
+- **Web Widgets** (HTML/JS) for rendering tool outputs in ChatGPT iframes
+- **OpenAI Metadata** on tools (`openai/outputTemplate`, `openai/widgetAccessible`)
+
+To connect your app to ChatGPT:
+
+1. Enable Developer Mode: Settings → Apps & Connectors → Advanced settings
+2. Create a Connector: Settings → Connectors → Create
+3. Enter your ngrok URL (e.g., `https://abc123.ngrok.app/mcp`)
+4. Use in chat: Click + → More → Select your connector
+
+See [OpenAI Apps SDK Documentation](https://developers.openai.com/apps-sdk/) for more details.
 
 ### OpenAPI to MCP Mapping
 
