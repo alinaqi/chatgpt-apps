@@ -41,6 +41,10 @@ export class ChatGPTAppGenerator {
     // Generate widget types for window.openai
     files.push(this.generateWidgetTypes());
 
+    // Generate tests
+    files.push(this.generateTests(proposal));
+    files.push(this.generateVitestConfig());
+
     return files;
   }
 
@@ -55,6 +59,8 @@ export class ChatGPTAppGenerator {
         build: 'tsc',
         start: 'node dist/server.js',
         dev: 'tsx src/server.ts',
+        test: 'vitest run',
+        'test:watch': 'vitest',
       },
       dependencies: {
         '@modelcontextprotocol/sdk': '^1.20.0',
@@ -64,6 +70,7 @@ export class ChatGPTAppGenerator {
         '@types/node': '^20.12.0',
         typescript: '^5.4.0',
         tsx: '^4.7.0',
+        vitest: '^1.6.0',
       },
     };
 
@@ -1014,5 +1021,106 @@ export {};
       .replace(/`/g, '\\`')
       .replace(/\$/g, '\\$')
       .replace(/\n/g, ' ');
+  }
+
+  private generateTests(proposal: AppProposal): GeneratedFile {
+    const allTools = this.deduplicateTools(proposal);
+
+    const content = `import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createServer, Server } from 'node:http';
+
+const PORT = process.env.TEST_PORT || '3001';
+const BASE_URL = \`http://localhost:\${PORT}\`;
+let serverProcess: ReturnType<typeof import('node:child_process').spawn> | null = null;
+
+// Helper to make MCP requests
+async function mcpRequest(method: string, params: Record<string, unknown> = {}) {
+  const response = await fetch(\`\${BASE_URL}/mcp\`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/event-stream',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method,
+      params,
+    }),
+  });
+  return response.json();
+}
+
+describe('${proposal.name} MCP Server', () => {
+  describe('Health Check', () => {
+    it('should respond to health check', async () => {
+      const response = await fetch(\`\${BASE_URL}/\`);
+      expect(response.ok).toBe(true);
+      const text = await response.text();
+      expect(text).toContain('MCP server is running');
+    });
+  });
+
+  describe('MCP Protocol', () => {
+    it('should list available tools', async () => {
+      const result = await mcpRequest('tools/list');
+      expect(result).toHaveProperty('result');
+      expect(result.result).toHaveProperty('tools');
+      expect(Array.isArray(result.result.tools)).toBe(true);
+      expect(result.result.tools.length).toBeGreaterThan(0);
+    });
+
+    it('should have correct tool count', async () => {
+      const result = await mcpRequest('tools/list');
+      expect(result.result.tools.length).toBe(${allTools.length});
+    });
+
+    it('should list resources', async () => {
+      const result = await mcpRequest('resources/list');
+      expect(result).toHaveProperty('result');
+    });
+  });
+
+  describe('Tool Definitions', () => {
+${allTools.map((tool) => `    it('should have tool: ${tool.name}', async () => {
+      const result = await mcpRequest('tools/list');
+      const tool = result.result.tools.find((t: { name: string }) => t.name === '${tool.name}');
+      expect(tool).toBeDefined();
+      expect(tool.description).toBeDefined();
+      expect(tool.inputSchema).toBeDefined();
+    });
+`).join('\n')}
+  });
+});
+
+// Instructions for running tests:
+// 1. Start the server: PORT=3001 npm start
+// 2. Run tests: TEST_PORT=3001 npm test
+// Or use a different port: PORT=3456 npm start && TEST_PORT=3456 npm test
+`;
+
+    return {
+      path: 'tests/server.test.ts',
+      content,
+    };
+  }
+
+  private generateVitestConfig(): GeneratedFile {
+    const content = `import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['tests/**/*.test.ts'],
+    testTimeout: 10000,
+  },
+});
+`;
+
+    return {
+      path: 'vitest.config.ts',
+      content,
+    };
   }
 }
